@@ -14,29 +14,36 @@ pub struct Sprite {
 }
 
 impl Sprite {
-    pub fn with_size(device: &GraphicDevice, width: u32, height: u32) -> Self {
+    pub fn with_size(device: &GraphicDevice, x: i32, y: i32, width: u32, height: u32) -> Self {
         const WHITE: [f32; 4] = [1.0; 4];
 
+        let [x, y] = [x as f32, y as f32];
         let [w, h] = [width as f32, height as f32];
 
+        // FIXME: This is counter-clockwise winding.
+        //        Since the shader is flipping the y-axis, and in the future
+        //        a camera matrix may as well, we are actually mirroring
+        //        the vertices and viewing the back.
+        //        Even though we don't do backface culling, this may or may not be
+        //        be ideal.
         let vertices = [
             Vertex {
-                position: [0.0, 0.0],
+                position: [x, y],
                 uv: [0.0, 0.0],
                 color: WHITE,
             },
             Vertex {
-                position: [w, 0.0],
+                position: [x + w, y],
                 uv: [1.0, 0.0],
                 color: WHITE,
             },
             Vertex {
-                position: [w, h],
+                position: [x + w, y + h],
                 uv: [1.0, 1.0],
                 color: WHITE,
             },
             Vertex {
-                position: [0.0, h],
+                position: [x, y + h],
                 uv: [0.0, 1.0],
                 color: WHITE,
             },

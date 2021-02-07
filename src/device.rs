@@ -19,6 +19,8 @@ impl GraphicDevice {
         // Ensure our preferred settings.
         unsafe {
             gl.front_face(glow::CCW); // Counter-clockwise winding.
+                                      // gl.enable(glow::CULL_FACE);
+                                      // gl.cull_face(glow::BACK);
         }
 
         // Dropped resources need to be deallocated via the OpenGL context.
@@ -70,6 +72,10 @@ impl GraphicDevice {
         self.size.set(size);
     }
 
+    pub fn get_viewport_size(&self) -> PhysicalSize<u32> {
+        self.size.get()
+    }
+
     pub fn shutdown(&self) {
         self.shutting_down.set(true);
         self.maintain();
@@ -85,31 +91,31 @@ impl GraphicDevice {
             return;
         }
 
+        let canvas_size = self.size.get();
+
         unsafe {
             let physical_size_i32 = self.size.get().cast::<i32>();
             self.gl
                 .viewport(0, 0, physical_size_i32.width, physical_size_i32.height);
 
             self.gl.use_program(Some(shader.program));
-        }
 
-        let canvas_size = self.size.get();
+            // FIXME: Specific to the sprite shader.
+            self.gl.uniform_2_f32(
+                Some(&0),
+                canvas_size.width as f32,
+                canvas_size.height as f32,
+            );
+        }
 
         for sprite in sprites {
             unsafe {
                 // Only sprites with textures are drawn.
                 if let Some(texture_handle) = sprite.texture_handle() {
-                    self.gl.bind_vertex_array(Some(sprite.vertex_buffer.handle));
+                    self.gl.bind_vertex_array(Some(sprite.vertex_buffer.vbo));
 
                     self.gl.active_texture(glow::TEXTURE0);
                     self.gl.bind_texture(glow::TEXTURE_2D, Some(texture_handle));
-
-                    // FIXME: Specific to the sprite shader.
-                    self.gl.uniform_2_f32(
-                        Some(&0),
-                        canvas_size.width as f32,
-                        canvas_size.height as f32,
-                    );
 
                     // FIXME: Unsigned short is a detail of the vertex buffer, so drawing should probably happen there.
                     self.gl

@@ -4,6 +4,7 @@ pub mod errors;
 mod marker;
 pub mod shader;
 pub mod sprite;
+pub mod sprite_batch;
 pub mod texture;
 pub mod utils;
 mod vertex;

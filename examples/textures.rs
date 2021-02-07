@@ -5,6 +5,7 @@ use glutin::{
     window::WindowBuilder,
     Api, ContextBuilder, GlProfile, GlRequest,
 };
+use grok_glow::sprite_batch::SpriteBatch;
 use grok_glow::{device::GraphicDevice, shader::Shader, sprite::Sprite, texture::Texture, utils};
 use std::{
     error::Error,
@@ -40,18 +41,48 @@ fn main() -> Result<(), Box<dyn Error>> {
     ));
 
     // Sprite
-    let sprite = {
+    // let mut sprites = vec![];
+    //
+    // {
+    //     let img = image::open("src/test_pattern_2.png")?.to_rgba8();
+    //
+    //     let mut texture = Texture::new(&graphics_device, img.width(), img.height())?;
+    //     texture.update_data(&graphics_device, img.as_raw());
+    //     let tex_rc = Rc::new(texture);
+    //
+    //     for y in 0..12 {
+    //         for x in 0..16 {
+    //             let mut sprite = Sprite::with_size(&graphics_device, x * 64, y * 64, 64, 64);
+    //             sprite.set_texture(tex_rc.clone());
+    //             sprites.push(sprite);
+    //         }
+    //     }
+    //     // for i in 0..1000 {
+    //     //     let mut sprite = Sprite::with_size(&graphics_device, 64, 64);
+    //     //     sprite.set_texture(tex_rc.clone());
+    //     //     sprites.push(sprite);
+    //     // }
+    // }
+
+    // Sprite Batch
+    let mut sprites = vec![];
+    let mut sprite_batch = SpriteBatch::new(&graphics_device);
+
+    {
         let img = image::open("src/test_pattern_2.png")?.to_rgba8();
 
         let mut texture = Texture::new(&graphics_device, img.width(), img.height())?;
         texture.update_data(&graphics_device, img.as_raw());
+        let tex_rc = Rc::new(texture);
 
-        let mut sprite = Sprite::with_size(&graphics_device, 64, 64);
-        sprite.set_texture(Rc::new(texture));
-        sprite
-    };
-
-    let mut sprites = vec![sprite];
+        for y in 0..12 {
+            for x in 0..16 {
+                let mut sprite = grok_glow::sprite_batch::Sprite::with([x * 64, y * 64], [64, 64]);
+                sprite.set_texture(tex_rc.clone());
+                sprites.push(sprite);
+            }
+        }
+    }
 
     graphics_device.clear_screen([0.1, 0.2, 0.3, 1.0]);
     let mut last_time = Instant::now();
@@ -82,9 +113,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .window()
                     .set_title(&format!("Grok {:.0}fps", fps.fps()));
 
+                // Sprite must be added to the batch each draw call.
+                for sprite in &sprites {
+                    sprite_batch.add(sprite);
+                }
+
                 graphics_device.maintain().unwrap();
                 graphics_device.clear_screen([0.1, 0.2, 0.3, 1.0]);
-                graphics_device.draw(&sprites, shader.as_ref().unwrap());
+                // graphics_device.draw(&sprites, shader.as_ref().unwrap());
+                sprite_batch.draw(&graphics_device, shader.as_ref().unwrap());
 
                 // Important! Remember to swap the buffers else no drawing will show.
                 windowed_context.swap_buffers().unwrap();

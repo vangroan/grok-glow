@@ -15,7 +15,9 @@ pub struct Vertex {
 
 /// Handle to a vertex buffer object located in video memory.
 pub struct VertexBuffer {
-    pub(crate) handle: u32,
+    pub(crate) vbo: u32,
+    pub(crate) vertex_buffer: u32,
+    pub(crate) index_buffer: u32,
     destroy: Sender<Destroy>,
 }
 
@@ -32,12 +34,14 @@ impl VertexBuffer {
             device.gl.bind_vertex_array(Some(vertex_array));
 
             // Attached buffer space
-            let buf = device.gl.create_buffer().unwrap();
-            device.gl.bind_buffer(glow::ARRAY_BUFFER, Some(buf));
+            let vertex_buffer = device.gl.create_buffer().unwrap();
+            device
+                .gl
+                .bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
             device.gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
                 utils::as_u8(vertices),
-                glow::STATIC_DRAW,
+                glow::DYNAMIC_DRAW,
             );
             assert_gl(&device.gl);
 
@@ -80,31 +84,36 @@ impl VertexBuffer {
             assert_gl(&device.gl);
 
             // Indices
-            let index_buf = device.gl.create_buffer().unwrap();
+            let index_buffer = device.gl.create_buffer().unwrap();
             device
                 .gl
-                .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buf));
+                .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
             device.gl.buffer_data_u8_slice(
                 glow::ELEMENT_ARRAY_BUFFER,
                 utils::as_u8(indices),
-                glow::STATIC_DRAW,
+                glow::DYNAMIC_DRAW,
             );
 
             device.gl.bind_buffer(glow::ARRAY_BUFFER, None);
             device.gl.bind_vertex_array(None);
 
             Self {
-                handle: vertex_array,
+                vbo: vertex_array,
+                vertex_buffer,
+                index_buffer,
                 destroy: device.destroy_sender(),
             }
         }
+    }
+
+    /// Draw a subset of the vertex array.
+    pub fn draw(&self, device: &GraphicDevice, start: usize, count: usize) {
+        todo!()
     }
 }
 
 impl Drop for VertexBuffer {
     fn drop(&mut self) {
-        self.destroy
-            .send(Destroy::VertexArray(self.handle))
-            .unwrap();
+        self.destroy.send(Destroy::VertexArray(self.vbo)).unwrap();
     }
 }
