@@ -1,14 +1,17 @@
 #version 410
+#extension GL_ARB_explicit_uniform_location : enable
+#extension GL_ARB_explicit_attrib_location  : enable
 
 // Called attributes in OpenGL's API.
-in vec2 a_Pos;
-in vec2 a_UV;
+layout(location = 0) in vec2 a_Pos;
+layout(location = 1) in vec2 a_UV;
+layout(location = 2) in vec4 a_Color;
 
 // Canvas width and height.
 // Allows us to pass vertex position to shader as
 // number of pixels.
 // This could be a matrix too.
-uniform vec2 u_Resolution;
+layout(location = 0) uniform vec2 u_Resolution;
 
 // Varyings are values sent from the vertex shader to
 // the fragment shader. The value that reaches the fragment
@@ -30,6 +33,6 @@ void main() {
     // To get a traditional 2D pixel space where 0,0 is top left, we flip the y.
     gl_Position = vec4(pos * vec2(1, -1), 0.0, 1.0);
 
-    v_Color = vec4(1.0, 1.0, 1.0, 1.0);
+    v_Color = a_Color;
     v_TexCoord = a_UV;
 }

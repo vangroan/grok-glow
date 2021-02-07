@@ -7,15 +7,12 @@ use glutin::{
     window::WindowBuilder,
     Api, ContextBuilder, GlProfile, GlRequest,
 };
+use grok_glow::{
+    device::GraphicDevice,
+    errors::{assert_gl, debug_assert_gl},
+};
 use image::GenericImageView;
 use std::{error::Error, mem, slice};
-
-unsafe fn assert_gl(gl: &glow::Context) {
-    let gl_err = gl.get_error();
-    if gl_err != glow::NO_ERROR {
-        panic!("OpenGL Error: 0x{:x}", gl_err);
-    }
-}
 
 unsafe fn as_u8<T>(buf: &[T]) -> &[u8] {
     let ptr = buf.as_ptr() as *const u8;
@@ -191,8 +188,8 @@ impl Effect {
 
         // Link shaders.
         let shader_sources = [
-            (glow::VERTEX_SHADER, include_str!("sprite.vert")),
-            (glow::FRAGMENT_SHADER, include_str!("sprite.frag")),
+            (glow::VERTEX_SHADER, include_str!("../src/sprite.vert")),
+            (glow::FRAGMENT_SHADER, include_str!("../src/sprite.frag")),
         ];
 
         let mut shaders = Vec::with_capacity(shader_sources.len());
@@ -292,8 +289,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Link shaders.
     let shader_sources = [
-        (glow::VERTEX_SHADER, include_str!("basic.vert")),
-        (glow::FRAGMENT_SHADER, include_str!("basic.frag")),
+        (glow::VERTEX_SHADER, include_str!("../src/basic.vert")),
+        (glow::FRAGMENT_SHADER, include_str!("../src/basic.frag")),
     ];
 
     let mut shaders = Vec::with_capacity(shader_sources.len());
