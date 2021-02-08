@@ -6,7 +6,10 @@ use glutin::{
     Api, ContextBuilder, GlProfile, GlRequest,
 };
 use grok_glow::sprite_batch::SpriteBatch;
-use grok_glow::{device::GraphicDevice, shader::Shader, sprite::Sprite, texture::Texture, utils};
+use grok_glow::{
+    device::GraphicDevice, shader::Shader, sprite::Sprite, texture::Texture,
+    texture_pack::TexturePack, utils,
+};
 use std::{
     error::Error,
     rc::Rc,
@@ -42,7 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Sprite
     // let mut sprites = vec![];
-    //
+
     // {
     //     let img = image::open("src/test_pattern_2.png")?.to_rgba8();
     //
@@ -57,11 +60,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     //             sprites.push(sprite);
     //         }
     //     }
-    //     // for i in 0..1000 {
-    //     //     let mut sprite = Sprite::with_size(&graphics_device, 64, 64);
-    //     //     sprite.set_texture(tex_rc.clone());
-    //     //     sprites.push(sprite);
-    //     // }
     // }
 
     // Sprite Batch
@@ -83,6 +81,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+
+    TexturePack::new(&graphics_device);
 
     graphics_device.clear_screen([0.1, 0.2, 0.3, 1.0]);
     let mut last_time = Instant::now();

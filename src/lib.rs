@@ -6,5 +6,6 @@ pub mod shader;
 pub mod sprite;
 pub mod sprite_batch;
 pub mod texture;
+pub mod texture_pack;
 pub mod utils;
 mod vertex;
