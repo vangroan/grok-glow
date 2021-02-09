@@ -119,18 +119,18 @@ impl SpriteBatch {
             }
 
             // The buffer is flushed each time we encounter a new texture.
-            if last_texture != Some(item.texture.handle) {
+            if last_texture != Some(item.texture.raw_handle()) {
                 Self::flush(device, vertex_buffer, &vertices, &indices);
                 vertices.clear();
                 indices.clear();
                 batch_count = 0;
-                last_texture = Some(item.texture.handle);
+                last_texture = Some(item.texture.raw_handle());
                 unsafe {
                     // Texture slot determined by sprite shader.
                     device.gl.active_texture(glow::TEXTURE0);
                     device
                         .gl
-                        .bind_texture(glow::TEXTURE_2D, Some(item.texture.handle));
+                        .bind_texture(glow::TEXTURE_2D, Some(item.texture.raw_handle()));
                 }
             }
 
@@ -142,6 +142,7 @@ impl SpriteBatch {
             // println!("{:?} {:?}", [x, y], [w, h]);
 
             // Build vertices from sprite parameters.
+            // TODO: scale UVs according to texture sub rectangle.
             vertices.push(Vertex {
                 position: [x, y],
                 uv: [0.0, 0.0],
@@ -241,7 +242,7 @@ impl SpriteBatch {
 pub struct Sprite {
     pub(crate) pos: [i32; 2],
     pub(crate) size: [u32; 2],
-    pub(crate) texture: Option<Rc<Texture>>,
+    pub(crate) texture: Option<Texture>,
 }
 
 impl Sprite {
@@ -253,7 +254,7 @@ impl Sprite {
         }
     }
 
-    pub fn set_texture(&mut self, texture: Rc<Texture>) {
+    pub fn set_texture(&mut self, texture: Texture) {
         self.texture = Some(texture);
     }
 }
@@ -261,5 +262,5 @@ impl Sprite {
 struct BatchItem {
     pos: [f32; 2],
     size: [f32; 2],
-    texture: Rc<Texture>,
+    texture: Texture,
 }

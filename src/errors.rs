@@ -1,10 +1,18 @@
+use crate::rect::Rect;
 use glow::HasContext;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
     InvalidTextureSize(u32, u32),
-    InvalidImageData { expected: usize, actual: usize },
+    InvalidSubTexture {
+        source: Rect<u32>,
+        target: Rect<u32>,
+    },
+    InvalidImageData {
+        expected: usize,
+        actual: usize,
+    },
     OpenGl(u32),
     OpenGlMessage(String),
 }
@@ -14,9 +22,10 @@ impl fmt::Display for Error {
         match self {
             Error::InvalidTextureSize(width, height) => write!(
                 f,
-                "Invalid texture size ({}, {}). Ensure that neither dimension is zero.",
+                "Invalid texture size ({}, {}). Ensure that neither dimension is zero, and is power-of-two.",
                 width, height
             ),
+            Error::InvalidSubTexture { source, target } => write!(f, "Sub-texture rectangle {} does not fit in {}.", target, source),
             Error::InvalidImageData { expected, actual } => write!(f, "Image data does not match texture storage size. Expected {} bytes. Actual {} bytes.", expected, actual),
             Error::OpenGl(error_code) => write!(f, "OpenGL Error: 0x{:x}", error_code),
             Error::OpenGlMessage(error_msg) => write!(f, "OpenGL Error: {}", error_msg),

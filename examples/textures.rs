@@ -71,18 +71,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let mut texture = Texture::new(&graphics_device, img.width(), img.height())?;
         texture.update_data(&graphics_device, img.as_raw());
-        let tex_rc = Rc::new(texture);
 
         for y in 0..12 {
             for x in 0..16 {
                 let mut sprite = grok_glow::sprite_batch::Sprite::with([x * 64, y * 64], [64, 64]);
-                sprite.set_texture(tex_rc.clone());
-                sprites.push(sprite);
+                sprite.set_texture(texture.clone());
+                // sprites.push(sprite);
             }
         }
     }
 
-    TexturePack::new(&graphics_device);
+    {
+        let mut tex_pack = TexturePack::new(&graphics_device)?;
+        let filenames = [
+            "./examples/01.png",
+            "./examples/03.png",
+            "./examples/02.png",
+        ];
+
+        for (idx, filename) in filenames.iter().enumerate() {
+            let img = image::open(filename)?.to_rgba8();
+            let texture = tex_pack
+                .add_image_data(&graphics_device, img.width(), img.height(), img.as_raw())
+                .unwrap();
+            let mut sprite =
+                grok_glow::sprite_batch::Sprite::with([idx as i32 * 64, 64], [1024, 1024]);
+            sprite.set_texture(texture);
+            sprites.push(sprite);
+        }
+    }
 
     graphics_device.clear_screen([0.1, 0.2, 0.3, 1.0]);
     let mut last_time = Instant::now();

@@ -10,7 +10,7 @@ pub struct Sprite {
     pub(crate) pos: [i32; 2],
     pub(crate) size: [u32; 2],
     pub(crate) vertex_buffer: VertexBuffer,
-    pub(crate) texture: Option<Rc<Texture>>,
+    pub(crate) texture: Option<Texture>,
 }
 
 impl Sprite {
@@ -60,11 +60,11 @@ impl Sprite {
         }
     }
 
-    pub fn set_texture(&mut self, texture: Rc<Texture>) {
+    pub fn set_texture(&mut self, texture: Texture) {
         self.texture = Some(texture);
     }
 
     pub(crate) unsafe fn texture_handle(&self) -> Option<u32> {
-        self.texture.as_ref().map(|rc| rc.handle)
+        self.texture.as_ref().map(|texture| texture.raw_handle())
     }
 }

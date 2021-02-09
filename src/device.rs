@@ -2,10 +2,12 @@
 use crate::{errors::debug_assert_gl, marker::Invariant};
 use glow::HasContext;
 use glutin::{dpi::PhysicalSize, PossiblyCurrent};
+use std::collections::HashSet;
 use std::{cell::Cell, fmt, marker::PhantomData, sync::mpsc};
 
 pub struct GraphicDevice {
     pub(crate) gl: glow::Context,
+    extensions: HashSet<String>,
     tx: mpsc::Sender<Destroy>,
     rx: mpsc::Receiver<Destroy>,
     size: Cell<PhysicalSize<u32>>,
@@ -16,6 +18,21 @@ pub struct GraphicDevice {
 
 impl GraphicDevice {
     pub fn new(gl: glow::Context) -> Self {
+        let mut extensions = HashSet::new();
+
+        // This implementation is taken from glow::Context::from_loader_function.
+        let num_extensions = unsafe { gl.get_parameter_i32(glow::NUM_EXTENSIONS) };
+        for i in 0..num_extensions {
+            let extension_name =
+                unsafe { gl.get_parameter_indexed_string(glow::EXTENSIONS, i as u32) };
+            extensions.insert(extension_name);
+        }
+
+        println!("Extensions:");
+        for ext in extensions.iter() {
+            println!("  {}", ext);
+        }
+
         // Ensure our preferred settings.
         unsafe {
             gl.front_face(glow::CCW); // Counter-clockwise winding.
@@ -28,12 +45,17 @@ impl GraphicDevice {
 
         Self {
             gl,
+            extensions,
             tx,
             rx,
             size: Cell::new(PhysicalSize::new(640, 480)),
             shutting_down: Cell::new(false),
             _invariant: PhantomData,
         }
+    }
+
+    pub fn has_extension(&self, extension: &str) -> bool {
+        self.extensions.contains(extension)
     }
 
     pub unsafe fn from_windowed_context(

@@ -1,23 +1,50 @@
 use crate::{
     device::{Destroy, GraphicDevice},
-    errors::{debug_assert_gl, gl_error, gl_result},
+    errors::{self, debug_assert_gl, gl_error, gl_result},
+    marker::Invariant,
+    rect::Rect,
 };
 use glow::HasContext;
-use std::sync::mpsc::Sender;
+use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
 
 /// Handle to a texture located in video memory.
+#[derive(Clone)]
 pub struct Texture {
-    pub(crate) handle: u32,
-    size: (u32, u32),
-    destroy: Sender<Destroy>,
+    /// Handle to texture allocated in video memory.
+    /// We keep a copy of the handle inlined in the struct
+    /// to save on a pointer jump during drawing, but the
+    /// handle is really owned by the `Rc`.
+    texture: glow::Texture,
+    /// Total size in texels of the whole texture in video memory.
+    /// We need to keep this around for UVs coordinates calculations.
+    orig_size: [u32; 2],
+    /// Sub-rectangle representing the view of this texture into
+    /// the complete texture.
+    ///
+    /// Must be equal or smaller than `orig_size`.
+    rect: Rect<u32>,
+    /// Handle to texture allocated in video memory, behind
+    /// a reference counted pointed. The `Rc` manages ownership
+    /// and triggers a deallocate in video memory when all
+    /// references are released.
+    handle: Rc<RefCell<TextureHandle>>,
 }
 
 impl Texture {
-    pub fn new(device: &GraphicDevice, width: u32, height: u32) -> crate::errors::Result<Self> {
+    pub fn new(device: &GraphicDevice, width: u32, height: u32) -> errors::Result<Self> {
         // Upfront validations.
-        if width == 0 || height == 0 {
-            return Err(crate::errors::Error::InvalidTextureSize(width, height));
+        Self::validate_size(width, height)?;
+
+        // When non-power-of-two textures are not available, several
+        // bad things can happen from degraded performance to OpenGL
+        // errors.
+        if !Self::is_npot_available(device) {
+            if !Self::is_power_of_two(width) || !Self::is_power_of_two(height) {
+                return Err(crate::errors::Error::InvalidTextureSize(width, height));
+            }
         }
+
+        // Important: Non power of two textures may not have mipmaps
 
         unsafe {
             let handle = gl_result(&device.gl, device.gl.create_texture())?;
@@ -59,18 +86,99 @@ impl Texture {
             );
             device.gl.bind_texture(glow::TEXTURE_2D, None);
 
+            // Match the allocated texture.
+            let rect = Rect {
+                pos: [0, 0],
+                size: [width, height],
+            };
+
             Ok(Self {
-                handle,
-                size: (width, height),
-                destroy: device.destroy_sender(),
+                texture: handle,
+                orig_size: [width, height],
+                rect,
+                handle: Rc::new(RefCell::new(TextureHandle {
+                    handle,
+                    size: [width, height],
+                    destroy: device.destroy_sender(),
+                    _invariant: Default::default(),
+                })),
             })
         }
     }
 
-    /// Uploads image data to the texture's storage on the GPU device.
+    /// Create a sub texture from the given texture view.
+    ///
+    /// Does not allocate new texture space in video memory.
+    /// Instead creates a view into the same memory backed
+    /// by `source`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidSubTexture` if the given position and
+    /// size do not fit inside the source texture.
+    ///
+    /// Returns `InvalidTextureSize` if any given dimension is 0
+    /// or invalid for the current graphic device.
+    pub fn new_sub(&self, pos: [u32; 2], size: [u32; 2]) -> errors::Result<Self> {
+        let target_rect = Rect { pos, size };
+
+        if !self.rect.can_fit(&target_rect) {
+            return Err(errors::Error::InvalidSubTexture {
+                source: self.rect,
+                target: target_rect,
+            });
+        }
+
+        Self::validate_size(size[0], size[1])?;
+
+        // We can probably get away without checking power-of-two since we're not
+        // allocating video memory.
+
+        Ok(Self {
+            texture: self.texture,
+            orig_size: self.orig_size,
+            rect: target_rect,
+            handle: self.handle.clone(),
+        })
+    }
+
+    fn validate_size(width: u32, height: u32) -> errors::Result<()> {
+        if width == 0 || height == 0 {
+            return Err(crate::errors::Error::InvalidTextureSize(width, height));
+        }
+
+        Ok(())
+    }
+
+    fn is_power_of_two(n: u32) -> bool {
+        // This bitwise test does not work on the number zero.
+        n != 0 && ((n & n - 1) == 0)
+    }
+
+    /// Queries the device support for non-power-of-two-textures.
+    pub fn is_npot_available(device: &GraphicDevice) -> bool {
+        device.has_extension("GL_ARB_texture_non_power_of_two")
+    }
+
+    pub fn raw_handle(&self) -> glow::Texture {
+        self.handle.borrow().handle
+    }
+
     pub fn update_data(
         &mut self,
         device: &GraphicDevice,
+        data: &[u8],
+    ) -> crate::errors::Result<()> {
+        let size = self.handle.borrow().size;
+        self.update_sub_data(device, [0, 0], size, data)
+    }
+
+    /// Uploads image data to the texture's storage on the GPU device.
+    pub fn update_sub_data(
+        &mut self,
+        device: &GraphicDevice,
+        pos: [u32; 2],
+        size: [u32; 2],
         data: &[u8],
     ) -> crate::errors::Result<()> {
         // TODO: Unbind GL_PIXEL_UNPACK_BUFFER
@@ -81,25 +189,33 @@ impl Texture {
         //       treated as a byte offset into the buffer object's
         //       data store.
 
+        // TODO: Validate given pos and size against target texture rectangle. Must fit.
+
         // Upfront validation
-        if data.len() != self.data_len() {
+        let expected_len = size[0] as usize * size[1] as usize * 4;
+        if data.len() != expected_len {
             return Err(crate::errors::Error::InvalidImageData {
-                expected: data.len(),
-                actual: self.data_len(),
+                expected: expected_len,
+                actual: data.len(),
             });
         }
+
+        // Borrow mut to enforce runtime borrow rules.
+        let handle = self.handle.borrow_mut();
 
         unsafe {
             let _save = TextureSave::new(&device);
 
-            device.gl.bind_texture(glow::TEXTURE_2D, Some(self.handle));
+            device
+                .gl
+                .bind_texture(glow::TEXTURE_2D, Some(handle.handle));
             device.gl.tex_sub_image_2d(
                 glow::TEXTURE_2D,
                 0,                   // level
-                0,                   // x_offset
-                0,                   // y_offset
-                self.size.0 as i32,  // width
-                self.size.1 as i32,  // height
+                pos[0] as i32,       // x_offset
+                pos[1] as i32,       // y_offset
+                size[0] as i32,      // width
+                size[1] as i32,      // height
                 glow::RGBA,          // pixel format
                 glow::UNSIGNED_BYTE, // color data type
                 glow::PixelUnpackData::Slice(data),
@@ -112,14 +228,32 @@ impl Texture {
 
     /// Returns the number of bytes contained in the texture's storage.
     pub fn data_len(&self) -> usize {
+        let size = self.handle.borrow().size;
         // Each pixel is 4 bytes, RGBA
-        self.size.0 as usize * self.size.1 as usize * 4
+        size[0] as usize * size[1] as usize * 4
     }
 }
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        self.destroy.send(Destroy::Texture(self.handle)).unwrap();
+        // self.destroy.send(Destroy::Texture(self.handle)).unwrap();
+    }
+}
+
+/// Wrapper for a handle to a texture in video memory.
+///
+/// This wrapper is considered the owner of the video memory, and
+/// is responsible for triggering a deallocate on drop.
+struct TextureHandle {
+    handle: glow::Texture,
+    size: [u32; 2],
+    destroy: Sender<Destroy>,
+    _invariant: Invariant,
+}
+
+impl Drop for TextureHandle {
+    fn drop(&mut self) {
+        self.destroy.send(Destroy::Texture(self.handle)).expect("TextureHandle dropped, but channel closed. OpenGL context was possibly terminated with dangling resources.");
     }
 }
 

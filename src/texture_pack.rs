@@ -1,15 +1,19 @@
 use crate::{device::GraphicDevice, errors, texture::Texture};
 use glow::HasContext;
+use std::borrow::Borrow;
+use std::cell::RefCell;
+use std::convert::TryInto;
 use std::rc::Rc;
 
 pub struct TexturePack {
     /// Texture atlases that have space available for
     /// more textures.
-    open: Vec<(Rc<Texture>, Packer)>,
+    open: Vec<(Texture, Packer)>,
     /// Full atlases.
-    closed: Vec<Rc<Texture>>,
+    closed: Vec<Texture>,
     /// Minimum size of newly allocated textures.
     min_size: [u32; 2],
+    padding: u32,
 }
 
 impl TexturePack {
@@ -32,16 +36,70 @@ impl TexturePack {
     pub fn with_size(device: &GraphicDevice, width: u32, height: u32) -> errors::Result<Self> {
         Ok(Self {
             open: vec![(
-                Rc::new(Texture::new(device, width, height)?),
+                Texture::new(device, width, height)?,
                 Packer::new(width, width),
             )],
             closed: vec![],
             min_size: [width, height],
+            padding: 1,
         })
     }
 
-    pub fn add_image_data(&mut self, width: u32, height: u32, data: &[u8]) {
-        todo!()
+    pub fn add_image_data(
+        &mut self,
+        device: &GraphicDevice,
+        width: u32,
+        height: u32,
+        data: &[u8],
+    ) -> errors::Result<Texture> {
+        // Upfront validations.
+        if width == 0 || height == 0 {
+            return Err(crate::errors::Error::InvalidTextureSize(width, height));
+        }
+
+        let expected_len = width as usize * height as usize * 4;
+        println!("expected {}, actual {}", expected_len, data.len());
+        if expected_len != data.len() {
+            return Err(crate::errors::Error::InvalidImageData {
+                expected: expected_len,
+                actual: data.len(),
+            });
+        }
+
+        let [padded_width, padded_height] = [width + self.padding * 2, height + self.padding * 2];
+
+        // Look for a texture with space.
+        for (texture, packer) in &mut self.open {
+            if let Some(slot_pos) = packer.try_insert(padded_width, padded_height) {
+                let [padded_x, padded_y] = [slot_pos[0] + self.padding, slot_pos[1] + self.padding];
+                texture.update_sub_data(device, [padded_x, padded_y], [width, height], data)?;
+                return Ok(texture.new_sub([padded_x, padded_y], [width, height])?);
+            }
+        }
+
+        // No available space left in open set.
+        // TODO: validate device requirements that dimensions be a factor of 2
+        let new_tex_width = padded_width.min(Self::DEFAULT_DIM);
+        let new_tex_height = padded_height.min(Self::DEFAULT_DIM);
+        self.open.push((
+            Texture::new(device, new_tex_width, new_tex_height)?,
+            Packer::new(new_tex_width, new_tex_height),
+        ));
+        let maybe_new = self.open.last_mut().and_then(|(texture, packer)| {
+            packer
+                .try_insert(padded_width, padded_height)
+                .map(|slot| (texture, slot))
+        });
+
+        // A new texture was allocated with enough space. If
+        // the packer did not find a slot, it's a bug.
+        debug_assert!(maybe_new.is_some());
+
+        let (texture, slot_pos) = maybe_new.unwrap();
+        let [padded_x, padded_y] = [slot_pos[0] + self.padding, slot_pos[1] + self.padding];
+        texture.update_sub_data(device, [padded_x, padded_y], [width, height], data)?;
+
+        Ok(texture.new_sub([padded_x, padded_y], [width, height])?)
     }
 }
 
@@ -90,7 +148,7 @@ impl Packer {
         self.available > 0
     }
 
-    fn insert(&mut self, width: u32, height: u32) -> Option<[u32; 2]> {
+    fn try_insert(&mut self, width: u32, height: u32) -> Option<[u32; 2]> {
         if self.rects.is_empty() {
             return None;
         }
@@ -226,6 +284,7 @@ enum RectNode {
 }
 
 #[derive(Debug, Clone)]
+#[deprecated]
 struct Rectangle {
     pos: [u32; 2],
     size: [u32; 2],
@@ -245,19 +304,19 @@ mod test {
     fn test_pack() {
         let mut packer = Packer::new(100, 100);
 
-        assert_eq!(packer.insert(50, 50), Some([0, 0]));
+        assert_eq!(packer.try_insert(50, 50), Some([0, 0]));
         assert_eq!(packer.available, 2);
         assert!(packer.has_space());
 
-        assert_eq!(packer.insert(50, 50), Some([50, 0]));
+        assert_eq!(packer.try_insert(50, 50), Some([50, 0]));
         assert_eq!(packer.available, 1);
         assert!(packer.has_space());
 
-        assert_eq!(packer.insert(50, 50), Some([0, 50]));
+        assert_eq!(packer.try_insert(50, 50), Some([0, 50]));
         assert_eq!(packer.available, 1);
         assert!(packer.has_space());
 
-        assert_eq!(packer.insert(50, 50), Some([50, 50]));
+        assert_eq!(packer.try_insert(50, 50), Some([50, 50]));
         assert_eq!(packer.available, 0);
         assert!(!packer.has_space());
     }

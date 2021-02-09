@@ -2,6 +2,7 @@ pub mod device;
 mod draw;
 pub mod errors;
 mod marker;
+pub mod rect;
 pub mod shader;
 pub mod sprite;
 pub mod sprite_batch;
